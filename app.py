@@ -6,8 +6,6 @@ st.set_page_config(page_title="Demo IA – Compras e Inventario Taller", layout=
 
 st.title("🚗 IA para gestión de compras e inventario del taller")
 
-st.write("Subir excel")
-
 file = st.file_uploader("Subir excel", type=["xlsx"])
 
 def factor_estacional(categoria, mes):
