@@ -11,19 +11,27 @@ st.set_page_config(page_title="Demo IA – Compras e Inventario Taller", layout=
 st.title("🚗 IA para gestión de compras e inventario del taller")
 
 # =========================
-# API KEY (Secrets / env)
+# GROQ (OpenAI-compatible)
+# Base URL oficial Groq: https://api.groq.com/openai/v1
 # =========================
-api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+groq_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY", ""))
 
 # Debug seguro (NO muestra la clave completa)
-st.caption("🔧 Debug conexión IA")
-st.caption(f"API key cargada: {'Sí' if api_key else 'No'}")
-if api_key:
-    st.caption(f"Prefijo: {api_key[:7]}...  Longitud: {len(api_key)}")
+st.caption("🔧 Debug conexión IA (Groq)")
+st.caption(f"GROQ_API_KEY cargada: {'Sí' if groq_key else 'No'}")
+if groq_key:
+    st.caption(f"Prefijo: {groq_key[:4]}...  Longitud: {len(groq_key)}")
 else:
-    st.caption("Añade OPENAI_API_KEY en Streamlit Cloud → Manage app → Settings → Secrets")
+    st.caption("Añade GROQ_API_KEY en Streamlit Cloud → Manage app → Settings → Secrets")
 
-client = OpenAI(api_key=api_key) if api_key else None
+client = OpenAI(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=groq_key
+) if groq_key else None
+
+# Modelo recomendado (puedes cambiarlo)
+# Groq docs: llama-3.3-70b-versatile (recomendado en migraciones/deprecations)
+MODEL_ID = "llama-3.3-70b-versatile"
 
 # =========================
 # Upload
@@ -43,12 +51,10 @@ def factor_estacional(categoria, mes):
         return 1.2
     return 1.0
 
-
 # =========================
 # Main
 # =========================
 if file:
-    # Nota: requiere openpyxl en requirements.txt
     df = pd.read_excel(file)
 
     st.subheader("📄 Datos cargados")
@@ -68,9 +74,8 @@ if file:
         for col in ["stock_actual", "stock_minimo", "ventas_mes_1", "ventas_mes_2", "ventas_mes_3", "mes", "precio_compra"]:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # Si hay NaNs por conversiones, avisamos
         if df[["stock_actual", "stock_minimo", "ventas_mes_1", "ventas_mes_2", "ventas_mes_3", "mes", "precio_compra"]].isna().any().any():
-            st.warning("⚠️ Ojo: hay valores no numéricos o vacíos en columnas numéricas. Se han convertido a NaN.")
+            st.warning("⚠️ Hay valores no numéricos o vacíos en columnas numéricas. Se han convertido a NaN.")
 
         # ======================
         # Cálculos
@@ -87,8 +92,6 @@ if file:
         df["pedido_recomendado"] = (
             df["consumo_previsto"] + df["stock_minimo"] - df["stock_actual"]
         )
-
-        # Evitar NaNs en pedido y pasarlo a int
         df["pedido_recomendado"] = df["pedido_recomendado"].fillna(0).apply(lambda x: max(0, int(x)))
 
         df["riesgo_rotura"] = np.where(
@@ -128,14 +131,13 @@ if file:
         st.metric("💰 Dinero inmovilizado en almacén (€)", round(total_muerto, 2))
 
         # ======================
-        # IA (LLM)
+        # IA (Groq)
         # ======================
         st.subheader("🧠 Análisis con IA (resumen ejecutivo)")
 
-        if not api_key or client is None:
-            st.warning("Falta configurar OPENAI_API_KEY en Secrets para usar el análisis con IA.")
+        if not groq_key or client is None:
+            st.warning("Falta configurar GROQ_API_KEY en Secrets para usar el análisis con IA.")
         else:
-            # Para no enviar 200 filas, mandamos solo lo importante
             top_riesgo = df[df["riesgo_rotura"] == "ALTO"].copy()
             top_inmo = df[df["inmovilizado"] == "SI"].copy()
             top_pedido = df.sort_values("pedido_recomendado", ascending=False).head(10).copy()
@@ -159,34 +161,43 @@ if file:
             }
 
             st.caption("🔎 Debug IA: payload generado correctamente.")
-            st.caption(f"Items top_pedido: {len(payload['top_pedido'])} | alertas: {len(payload['alertas_rotura'])} | inmovilizados: {len(payload['inmovilizados'])}")
+            st.caption(f"Modelo: {MODEL_ID} | top_pedido: {len(payload['top_pedido'])} | alertas: {len(payload['alertas_rotura'])} | inmovilizados: {len(payload['inmovilizados'])}")
 
             if st.button("Generar análisis con IA"):
-                with st.spinner("Analizando inventario..."):
+                with st.spinner("Analizando inventario (Groq)..."):
                     try:
-                        resp = client.responses.create(
-                            model="gpt-4o-mini",
-                            instructions=(
-                                "Eres un asesor experto en gestión de compras e inventario para talleres. "
-                                "Analiza los datos y devuelve un resumen ejecutivo claro y accionable."
-                            ),
-                            input=(
-                                "Datos procesados (JSON):\n"
-                                f"{payload}\n\n"
-                                "Devuelve:\n"
-                                "1) 3 riesgos operativos principales (roturas) con acciones.\n"
-                                "2) 3 oportunidades de ahorro (sobrestock/inmovilizado).\n"
-                                "3) Lista priorizada de compra (máximo 8 items).\n"
-                                "4) Una frase final tipo 'próximo paso' para el jefe de taller.\n"
-                                "Formato: bullets, conciso, español de España."
-                            ),
+                        completion = client.chat.completions.create(
+                            model=MODEL_ID,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "Eres un asesor experto en gestión de compras e inventario para talleres. "
+                                        "Analiza datos y devuelve un resumen ejecutivo claro, accionable y conciso."
+                                    ),
+                                },
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        "Datos procesados (JSON):\n"
+                                        f"{payload}\n\n"
+                                        "Devuelve:\n"
+                                        "1) 3 riesgos operativos principales (roturas) con acciones.\n"
+                                        "2) 3 oportunidades de ahorro (sobrestock/inmovilizado).\n"
+                                        "3) Lista priorizada de compra (máximo 8 items).\n"
+                                        "4) Una frase final tipo 'próximo paso' para el jefe de taller.\n"
+                                        "Formato: bullets, conciso, español de España."
+                                    ),
+                                },
+                            ],
+                            temperature=0.2,
                         )
+                        text = completion.choices[0].message.content
                         st.success("✅ Listo")
-                        st.write(resp.output_text)
+                        st.write(text)
 
                     except Exception as e:
-                        st.error("❌ No se ha podido conectar con el proveedor de IA (clave inválida, permisos o cuota).")
+                        st.error("❌ No se ha podido conectar con Groq (clave inválida, permisos o límites).")
                         st.caption(f"Detalle técnico: {type(e).__name__}: {e}")
-
 else:
-    st.info("📌 Sube un Excel para empezar (usa la plantilla que te pasé).")
+    st.info("📌 Sube un Excel para empezar (usa la plantilla).")
