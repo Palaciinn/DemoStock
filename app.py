@@ -4,11 +4,11 @@ import numpy as np
 
 st.set_page_config(page_title="Demo IA – Compras e Inventario Taller", layout="wide")
 
-st.title("🚗 IA para gestión de compras e inventario en talleres")
+st.title("🚗 IA para gestión de compras e inventario del taller")
 
-st.write("Sube un Excel con histórico de ventas y stock")
+st.write("Subir excel")
 
-file = st.file_uploader("Sube el Excel del taller", type=["xlsx"])
+file = st.file_uploader("Subir excel", type=["xlsx"])
 
 def factor_estacional(categoria, mes):
     categoria = str(categoria).lower()
