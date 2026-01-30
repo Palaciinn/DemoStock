@@ -94,8 +94,8 @@ if file:
         total_muerto = df["valor_inmovilizado"].sum()
 
         st.metric("💰 Dinero inmovilizado en almacén (€)", round(total_muerto,2))
-
-st.subheader("🧠 Análisis con IA (resumen ejecutivo)")
+        
+        st.subheader("🧠 Análisis con IA (resumen ejecutivo)")
 
 if not api_key:
     st.warning("Falta configurar OPENAI_API_KEY en Secrets para usar el análisis con IA.")
