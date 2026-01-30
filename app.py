@@ -4,7 +4,7 @@ import numpy as np
 
 st.set_page_config(page_title="Demo IA – Compras e Inventario Taller", layout="wide")
 
-st.title("🚗 IA para gestión de compras e inventario del taller")
+st.title("IA para gestión de compras e inventario del taller")
 
 file = st.file_uploader("Subir excel", type=["xlsx"])
 
